@@ -1,0 +1,1 @@
+<!DOCTYPE html><html lang=en><head><meta charset=UTF-8><title>Luma WASM Demo</title></head><body><h1>Luma WASM Demo</h1><script type="module">import init from './pkg/luma.js';async function main() {await init();console.log('WASM loaded!');}main();</script></body></html>

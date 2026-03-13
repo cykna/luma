@@ -31,6 +31,7 @@ impl LumaHandler for BasicHandler {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[tokio::main]
 async fn main() {
     let mut space = LumaSpace::new(BasicHandler {
@@ -38,3 +39,5 @@ async fn main() {
     });
     space.initialize().await;
 }
+#[cfg(target_arch = "wasm32")]
+fn main() {}

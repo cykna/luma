@@ -2,6 +2,7 @@ use flume::Sender;
 use winit::{application::ApplicationHandler, window::Window};
 
 use crate::{
+    backend::LumaBackend,
     space::{LumaEvent, LumaWindowConfigs},
     ui::LumaUI,
 };
@@ -11,7 +12,7 @@ pub struct LumaContext<E> {
     ui: LumaUI,
     config: LumaWindowConfigs,
     window: Option<Window>,
-    rendering_backend: LumaBackend,
+    rendering_backend: Option<LumaBackend>,
     pub(crate) sender: Option<Sender<LumaEvent<E>>>,
 }
 
@@ -43,6 +44,20 @@ impl<E: 'static> ApplicationHandler<E> for LumaContext<E> {
                 .create_window(self.config.to_window_attribs())
                 .unwrap(),
         );
+        #[cfg(target_arch = "wasm32")]
+        {
+            use wasm_bindgen::{JsCast, UnwrapThrowExt};
+            use winit::platform::web::WindowAttributesExtWebSys;
+
+            const CANVAS_ID: &str = "canvas";
+            let mut window_attributes = self.config.to_window_attribs();
+            let window = vello::wgpu::web_sys::window().unwrap_throw();
+            let document = window.document().unwrap_throw();
+            let canvas = document.get_element_by_id(CANVAS_ID).unwrap_throw();
+            let html_canvas_element = canvas.unchecked_into();
+            window_attributes = window_attributes.with_canvas(Some(html_canvas_element));
+        }
+
         let _ = self.sender().send(LumaEvent::Created);
     }
 

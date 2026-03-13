@@ -5,9 +5,11 @@ pub use config::*;
 pub use context::*;
 
 use std::sync::Arc;
-use tokio::sync::RwLock;
+
+use async_lock::RwLock;
+
 use winit::{
-    event::{DeviceEvent, WindowEvent},
+    event::WindowEvent,
     event_loop::{ControlFlow, EventLoop},
 };
 
@@ -60,12 +62,22 @@ where
         let (tx, rx) = flume::bounded(128);
 
         let handler = self.handler.clone();
+        #[cfg(not(target_arch = "wasm32"))]
         tokio::spawn(async move {
             let handler = handler.clone();
             while let Ok(event) = rx.recv_async().await {
                 handler.write().await.on_event(event);
             }
         });
+        #[cfg(target_arch = "wasm32")]
+        {
+            wasm_bindgen_futures::spawn_local(async move {
+                let handler = handler.clone();
+                while let Ok(event) = rx.recv_async().await {
+                    handler.write().await.on_event(event);
+                }
+            });
+        }
         let mut handle = self.handler.write().await;
         let ctx = handle.get_context_mut();
         ctx.sender = Some(tx);
