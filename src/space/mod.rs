@@ -14,7 +14,7 @@ use winit::{
 };
 
 pub trait LumaHandler {
-    type Event: 'static + Send + Sync;
+    type Event: 'static + Send + Sync + std::fmt::Debug;
     fn configs() -> LumaWindowConfigs {
         LumaWindowConfigs::default()
     }
@@ -26,7 +26,8 @@ pub trait LumaHandler {
     fn on_event(&mut self, _event: LumaEvent<Self::Event>);
 }
 
-pub enum LumaEvent<E> {
+#[derive(Debug)]
+pub enum LumaEvent<E: std::fmt::Debug> {
     Window(WindowEvent),
     User(E),
     Created,
@@ -53,6 +54,7 @@ where
 
     pub async fn initialize(&mut self) {
         let lp: EventLoop<H::Event> = EventLoop::with_user_event().build().unwrap();
+
         let configs = H::configs();
         if configs.wait_for_events {
             lp.set_control_flow(ControlFlow::Wait);
@@ -62,10 +64,18 @@ where
         let (tx, rx) = flume::bounded(128);
 
         let handler = self.handler.clone();
+
+        {
+            let mut handle = self.handler.write().await;
+            let ctx = handle.get_context_mut();
+
+            ctx.sender = Some(tx);
+        }
         #[cfg(not(target_arch = "wasm32"))]
         tokio::spawn(async move {
             let handler = handler.clone();
             while let Ok(event) = rx.recv_async().await {
+                tracing::info!("Caiu evento {event:?}");
                 handler.write().await.on_event(event);
             }
         });
@@ -79,8 +89,11 @@ where
             });
         }
         let mut handle = self.handler.write().await;
-        let ctx = handle.get_context_mut();
-        ctx.sender = Some(tx);
-        lp.run_app(ctx).unwrap();
+        let ctx = handle.get_context_mut() as *mut _; // raw pointer pra escapar do borrow
+        drop(handle); // ← libera o lock ANTES do run_app
+
+        if let Err(e) = lp.run_app(unsafe { &mut *ctx }) {
+            tracing::info!("{e:?}");
+        }
     }
 }
