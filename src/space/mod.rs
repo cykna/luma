@@ -4,56 +4,61 @@ mod context;
 pub use config::*;
 pub use context::*;
 
-use std::sync::Arc;
-
-use async_lock::RwLock;
-
 use winit::{
     event::WindowEvent,
     event_loop::{ControlFlow, EventLoop},
+    window::Window,
 };
 
+use crate::{backend::LumaBackend, ui::LumaUI};
+
 pub trait LumaHandler {
-    type Event: 'static + Send + Sync + std::fmt::Debug;
     fn configs() -> LumaWindowConfigs {
         LumaWindowConfigs::default()
     }
 
-    fn get_context(&self) -> &LumaContext<Self::Event>;
-    fn get_context_mut(&mut self) -> &mut LumaContext<Self::Event>;
+    fn rerender(&mut self, ui: &LumaUI, renderer: &mut LumaBackend);
 
     ///Executes when the provided `event`, is received by the window
-    fn on_event(&mut self, _event: LumaEvent<Self::Event>);
+    fn on_event(
+        &mut self,
+        _event: LumaEvent,
+        window: &Window,
+        ui: &LumaUI,
+        renderer: &mut LumaBackend,
+    );
 }
 
 #[derive(Debug)]
-pub enum LumaEvent<E: std::fmt::Debug> {
+pub enum LumaEvent {
     Window(WindowEvent),
-    User(E),
     Created,
     Suspended,
     Exiting,
+    #[cfg(target_arch = "wasm32")]
+    LumaContext(LumaContextInner),
 }
 
 pub struct LumaSpace<H>
 where
     H: LumaHandler,
 {
-    handler: Arc<RwLock<H>>,
+    context: LumaContext<H>,
 }
 
 impl<H> LumaSpace<H>
 where
-    H: LumaHandler + 'static + Send + Sync,
+    H: LumaHandler + 'static,
 {
     pub fn new(handler: H) -> Self {
         Self {
-            handler: Arc::new(RwLock::new(handler)),
+            context: LumaContext::new(handler),
         }
     }
 
-    pub async fn initialize(&mut self) {
-        let lp: EventLoop<H::Event> = EventLoop::with_user_event().build().unwrap();
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn initialize(&mut self) {
+        let lp: EventLoop<LumaEvent> = EventLoop::with_user_event().build().unwrap();
 
         let configs = H::configs();
         if configs.wait_for_events {
@@ -61,38 +66,25 @@ where
         } else {
             lp.set_control_flow(ControlFlow::Poll);
         }
-        let (tx, rx) = flume::bounded(128);
 
-        let handler = self.handler.clone();
-
-        {
-            let mut handle = self.handler.write().await;
-            let ctx = handle.get_context_mut();
-
-            ctx.sender = Some(tx);
+        if let Err(e) = lp.run_app(&mut self.context) {
+            tracing::info!("{e:?}");
         }
-        #[cfg(not(target_arch = "wasm32"))]
-        tokio::spawn(async move {
-            let handler = handler.clone();
-            while let Ok(event) = rx.recv_async().await {
-                tracing::info!("Caiu evento {event:?}");
-                handler.write().await.on_event(event);
-            }
-        });
-        #[cfg(target_arch = "wasm32")]
-        {
-            wasm_bindgen_futures::spawn_local(async move {
-                let handler = handler.clone();
-                while let Ok(event) = rx.recv_async().await {
-                    handler.write().await.on_event(event);
-                }
-            });
-        }
-        let mut handle = self.handler.write().await;
-        let ctx = handle.get_context_mut() as *mut _; // raw pointer pra escapar do borrow
-        drop(handle); // ← libera o lock ANTES do run_app
+    }
+    #[cfg(target_arch = "wasm32")]
+    pub fn initialize(&mut self) {
+        let lp: EventLoop<LumaEvent> = EventLoop::with_user_event().build().unwrap();
 
-        if let Err(e) = lp.run_app(unsafe { &mut *ctx }) {
+        self.context.proxy = Some(lp.create_proxy());
+
+        let configs = H::configs();
+        if configs.wait_for_events {
+            lp.set_control_flow(ControlFlow::Wait);
+        } else {
+            lp.set_control_flow(ControlFlow::Poll);
+        }
+
+        if let Err(e) = lp.run_app(&mut self.context) {
             tracing::info!("{e:?}");
         }
     }

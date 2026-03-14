@@ -1,10 +1,23 @@
-use crate::space::{LumaContext, LumaEvent, LumaHandler, LumaSpace, LumaWindowConfigs};
+use crate::{
+    backend::LumaBackend,
+    space::{LumaEvent, LumaHandler, LumaSpace, LumaWindowConfigs},
+    ui::LumaUI,
+};
 pub use vello::wgpu;
-use winit::event::WindowEvent;
-mod backend;
+use winit::window::Window;
 
+mod backend;
 mod space;
 mod ui;
+
+#[cfg(target_arch = "wasm32")]
+pub type Result<T> = anyhow::Result<T>;
+#[cfg(target_arch = "wasm32")]
+pub type Report = anyhow::Error;
+#[cfg(not(target_arch = "wasm32"))]
+pub type Result<T> = color_eyre::eyre::Result<T>;
+#[cfg(not(target_arch = "wasm32"))]
+pub type Report = color_eyre::Report;
 
 #[cfg(not(target_arch = "wasm32"))]
 fn init_logging() {
@@ -23,28 +36,33 @@ fn init_logging() {
     let wasm_layer = WASMLayer::new(tracing_wasm::WASMLayerConfig::default());
     tracing_subscriber::registry().with(wasm_layer).init();
 }
-
-pub struct BasicHandler {
-    context: LumaContext<()>,
-}
+pub struct BasicHandler {}
 
 impl LumaHandler for BasicHandler {
-    type Event = ();
     fn configs() -> space::LumaWindowConfigs {
         LumaWindowConfigs::default()
     }
-    fn get_context(&self) -> &space::LumaContext<Self::Event> {
-        &self.context
+
+    fn rerender(&mut self, ui: &LumaUI, renderer: &mut LumaBackend) {
+        renderer.render_ui(ui).unwrap();
+        renderer.render(true).unwrap();
     }
-    fn get_context_mut(&mut self) -> &mut space::LumaContext<Self::Event> {
-        &mut self.context
-    }
-    fn on_event(&mut self, event: space::LumaEvent<Self::Event>) {
+
+    fn on_event(
+        &mut self,
+        event: space::LumaEvent,
+        window: &Window,
+        ui: &LumaUI,
+        renderer: &mut LumaBackend,
+    ) {
         match event {
             LumaEvent::Window(e) => match e {
-                WindowEvent::RedrawRequested => {}
+                winit::event::WindowEvent::Resized(size) => {
+                    renderer.resize(size.width, size.height)
+                }
                 _ => {}
             },
+
             LumaEvent::Created => {
                 tracing::info!("Initialized Luma");
             }
@@ -54,20 +72,16 @@ impl LumaHandler for BasicHandler {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-#[tokio::main]
-async fn main() {
+fn main() {
     init_logging();
-    let mut space = LumaSpace::new(BasicHandler {
-        context: LumaContext::default(),
-    });
-    space.initialize().await;
+    let mut space = LumaSpace::new(BasicHandler {});
+    space.initialize();
 }
+
 #[cfg(target_arch = "wasm32")]
 pub fn main() {
     init_logging();
     console_error_panic_hook::set_once();
-    let mut space = LumaSpace::new(BasicHandler {
-        context: LumaContext::default(),
-    });
-    wasm_bindgen_futures::spawn_local(async move { space.initialize().await });
+    let mut space = LumaSpace::new(BasicHandler {});
+    space.initialize();
 }

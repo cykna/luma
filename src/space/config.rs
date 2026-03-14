@@ -26,7 +26,6 @@ impl LumaWindowConfigs {
             .with_transparent(true)
             .with_decorations(self.decorated)
             .with_active(true)
-            .with_blur(true)
             .with_resizable(true)
     }
 }
