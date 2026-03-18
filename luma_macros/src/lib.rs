@@ -2,9 +2,9 @@ use proc_macro::TokenStream;
 use quote::{format_ident, quote};
 use std::collections::HashMap;
 use syn::{
-    Block, Expr, FnArg, Ident, ItemFn, ItemStruct, ReturnType, Stmt, Token, Type,
     parse::{Parse, ParseStream},
-    parse_macro_input, token,
+    parse_macro_input, token, Block, Expr, FnArg, Ident, ItemFn, ItemStruct, ReturnType, Stmt,
+    Token, Type,
 };
 
 struct ShaderBlock {
@@ -84,15 +84,21 @@ pub fn shader(input: TokenStream) -> TokenStream {
                     let f_name = &field.ident;
                     let f_ty = &field.ty;
 
+                    let mut location_val = 0u32;
                     for attr in &field.attrs {
                         if attr.path().is_ident("builtin") {
                             let meta: Ident = attr.parse_args().expect("expected ident in builtin");
                             wgsl_code.push_str(&format!("  @builtin({}) ", meta));
+                        } else if attr.path().is_ident("location") {
+                            if let Ok(lit) = attr.parse_args::<syn::LitInt>() {
+                                location_val = lit.base10_parse().unwrap_or(0);
+                            }
+                            wgsl_code.push_str(&format!("  @location({}) ", location_val));
                         }
                     }
 
                     let (wgsl_ty, rust_ty) = translate_type_dual(f_ty);
-                    wgsl_code.push_str(&format!("{}: {};\n", f_name.as_ref().unwrap(), wgsl_ty));
+                    wgsl_code.push_str(&format!("{}: {},\n", f_name.as_ref().unwrap(), wgsl_ty));
 
                     rust_fields.push(quote! { pub #f_name: #rust_ty });
                 }
@@ -157,10 +163,70 @@ pub fn shader(input: TokenStream) -> TokenStream {
     }
 
     let shader_name_str = shader_name.to_string();
+
+    let mut vertex_impl = quote! {};
+
+    for item in &block.items {
+        if let ShaderItem::Struct(s) = item {
+            if s.ident.to_string() == "Vertex" {
+                let rust_struct_name = format_ident!("{}{}", shader_name, s.ident);
+                let mut attributes = Vec::new();
+
+                for field in &s.fields {
+                    let f_ty = &field.ty;
+                    let (_wgsl_ty, rust_ty) = translate_type_dual(f_ty);
+                    let rust_ty_str = quote!(#rust_ty).to_string().replace(" ", "");
+
+                    let format_ident = match rust_ty_str.as_str() {
+                        "[f32;2]" => format_ident!("Float32x2"),
+                        "[f32;3]" => format_ident!("Float32x3"),
+                        "[f32;4]" => format_ident!("Float32x4"),
+                        "f32" => format_ident!("Float32"),
+                        "u32" => format_ident!("Uint32"),
+                        "i32" => format_ident!("Sint32"),
+                        _ => format_ident!("Float32x4"),
+                    };
+
+                    let mut attr_index: u32 = 0;
+                    for attr in &field.attrs {
+                        if attr.path().is_ident("location") {
+                            if let Ok(lit) = attr.parse_args::<syn::LitInt>() {
+                                attr_index = lit.base10_parse().unwrap_or(0);
+                            }
+                        }
+                    }
+
+                    attributes.push((attr_index, quote! { #attr_index => #format_ident, }));
+                }
+
+                attributes.sort_by_key(|(idx, _)| *idx);
+                let sorted_attrs: Vec<_> = attributes.into_iter().map(|(_, attr)| attr).collect();
+
+                vertex_impl = quote! {
+                    impl LumaVertex for #rust_struct_name {
+                        fn layout<'a>() -> ::vello::wgpu::VertexBufferLayout<'a> {
+                            static ATTRIBUTES: &[::vello::wgpu::VertexAttribute] = &::vello::wgpu::vertex_attr_array![
+                                #(#sorted_attrs)*
+                            ];
+                            ::vello::wgpu::VertexBufferLayout {
+                                array_stride: std::mem::size_of::<Self>() as u64,
+                                step_mode: ::vello::wgpu::VertexStepMode::Vertex,
+                                attributes: ATTRIBUTES,
+                            }
+                        }
+                    }
+                };
+                break;
+            }
+        }
+    }
+
     let expanded = quote! {
         pub struct #shader_name;
 
         #(#rust_items)*
+
+        #vertex_impl
 
         impl LumaShader for #shader_name {
             type Vertex = #vertex_ty;

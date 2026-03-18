@@ -1,8 +1,9 @@
 use std::sync::Arc;
 
 use vello::wgpu::{
-    self, MultisampleState, PipelineCompilationOptions, PrimitiveState, PrimitiveTopology,
-    RenderPipeline, RenderPipelineDescriptor, ShaderModule, ShaderModuleDescriptor, VertexState,
+    self, BlendState, ColorTargetState, ColorWrites, DepthStencilState, MultisampleState,
+    PipelineCompilationOptions, PrimitiveState, PrimitiveTopology, RenderPipeline,
+    RenderPipelineDescriptor, ShaderModule, ShaderModuleDescriptor, VertexState,
 };
 
 ///Implementations for the backend related to materials
@@ -37,12 +38,12 @@ pub struct RenderPipelineBuilder<'a> {
 }
 
 impl<'a> RenderPipelineBuilder<'a> {
-    pub fn with_render_method(&'a mut self, render: PrimitiveTopology) -> &'a mut Self {
+    pub fn with_render_method(mut self, render: PrimitiveTopology) -> Self {
         self.render_method = render;
         self
     }
 
-    pub fn with_shader<S: LumaShader>(&'a mut self) -> &'a mut Self {
+    pub fn with_shader<S: LumaShader>(mut self) -> Self {
         self.backend.create_shader::<S>();
         self.shader_layout = Some(<S::Vertex as LumaVertex>::layout());
         self
@@ -75,7 +76,7 @@ impl<'a> RenderPipelineBuilder<'a> {
                     },
                     primitive: PrimitiveState {
                         topology: self.render_method,
-                        strip_index_format: Some(wgpu::IndexFormat::Uint32),
+                        strip_index_format: None,
                         front_face: wgpu::FrontFace::Ccw,
                         cull_mode: Some(wgpu::Face::Back),
                         unclipped_depth: true,
@@ -95,7 +96,11 @@ impl<'a> RenderPipelineBuilder<'a> {
                             constants: &[],
                             zero_initialize_workgroup_memory: true,
                         },
-                        targets: &[],
+                        targets: &[Some(ColorTargetState {
+                            format: self.backend.config.format,
+                            blend: Some(BlendState::PREMULTIPLIED_ALPHA_BLENDING),
+                            write_mask: ColorWrites::all(),
+                        })],
                     }),
                     multiview: None,
                     cache: None,
@@ -129,12 +134,14 @@ impl LumaBackend {
         }
     }
     pub fn create_pipeline_builder_for<T: LumaShader>(&mut self) -> Arc<RenderPipeline> {
-        RenderPipelineBuilder {
+        let out = RenderPipelineBuilder {
             backend: self,
             name: T::SHADER_NAME,
             shader_layout: Some(<T::Vertex as LumaVertex>::layout()),
             render_method: PrimitiveTopology::TriangleList,
         }
-        .build()
+        .with_shader::<T>()
+        .build();
+        out
     }
 }

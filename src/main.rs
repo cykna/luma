@@ -1,6 +1,8 @@
 use crate::{
-    backend::LumaBackend,
+    backend::{LumaBackend, LumaShader},
+    mesh::Mesh,
     space::{LumaEvent, LumaHandler, LumaSpace, LumaWindowConfigs},
+    triangle::{Triangle, TriangleMesh},
     ui::LumaUI,
 };
 
@@ -38,7 +40,9 @@ fn init_logging() {
     let wasm_layer = WASMLayer::new(tracing_wasm::WASMLayerConfig::default());
     tracing_subscriber::registry().with(wasm_layer).init();
 }
-pub struct BasicHandler {}
+pub struct BasicHandler {
+    meshes: Vec<TriangleMesh>,
+}
 
 impl LumaHandler for BasicHandler {
     fn configs() -> space::LumaWindowConfigs {
@@ -66,6 +70,7 @@ impl LumaHandler for BasicHandler {
             },
 
             LumaEvent::Created => {
+                self.meshes.push(TriangleMesh::new(renderer));
                 tracing::info!("Initialized Luma");
             }
             _ => {}
@@ -76,7 +81,7 @@ impl LumaHandler for BasicHandler {
 #[cfg(not(target_arch = "wasm32"))]
 fn main() {
     init_logging();
-    let mut space = LumaSpace::new(BasicHandler {});
+    let mut space = LumaSpace::new(BasicHandler { meshes: Vec::new() });
     space.initialize();
 }
 

@@ -1,13 +1,13 @@
 use crate::{
-    backend::{BasicMaterial, LumaBackend, LumaShader, LumaVertex, Material},
+    backend::{BasicMaterial, LumaBackend, LumaShader, LumaVertex},
     mesh::{Mesh, MeshGeometry},
 };
 use luma_macros::shader;
-use vello::wgpu;
 shader! {
     Triangle {
         struct Vertex {
-            position: Vec2<f32>
+            #[location(0)] position: Vec2<f32>,
+            #[location(1)] color: Vec3<f32>,
         }
 
         struct VertexResult {
@@ -16,28 +16,16 @@ shader! {
         }
 
        #[vertex]
-       fn main(vertex: Vertex) -> VertexResult {
+       fn vertex_main(vertex: Vertex) -> VertexResult {
            VertexResult {
                position: Vec4(vertex.position.x, vertex.position.y, 0.0, 1.0)
            }
        }
 
        #[fragment]
-       fn frag(vertex: VertexResult) -> Vec4<f32> {
+       fn fragment_main(vertex: VertexResult) -> Vec4<f32> {
            Vec4(1.0, 1.0, 0.0, 1.0)
        }
-   }
-}
-
-impl LumaVertex for TriangleVertex {
-    fn layout<'a>() -> vello::wgpu::VertexBufferLayout<'a> {
-        wgpu::VertexBufferLayout {
-            array_stride: std::mem::size_of::<Self>() as u64,
-            step_mode: wgpu::VertexStepMode::Vertex,
-            attributes: &wgpu::vertex_attr_array![
-                0 => Float32x2,
-            ],
-        }
     }
 }
 
@@ -53,12 +41,15 @@ impl TriangleMesh {
                     &[
                         TriangleVertex {
                             position: [0.0, -0.5],
+                            color: [1.0, 0.0, 0.0],
                         },
                         TriangleVertex {
                             position: [0.5, 0.5],
+                            color: [0.0, 1.0, 0.0],
                         },
                         TriangleVertex {
                             position: [-0.5, 0.5],
+                            color: [0.0, 0.0, 1.0],
                         },
                     ],
                     backend,

@@ -93,7 +93,8 @@ impl LumaBackend {
         let (device, queue) = adapter
             .request_device(&DeviceDescriptor {
                 label: Some("device and queue creation"),
-                required_features: Features::empty(),
+                required_features: Features::DEPTH_CLIP_CONTROL
+                    | Features::CONSERVATIVE_RASTERIZATION,
                 required_limits: Limits::defaults(),
                 experimental_features: ExperimentalFeatures::disabled(),
                 memory_hints: wgpu::MemoryHints::Performance,
