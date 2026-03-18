@@ -1,4 +1,6 @@
-use vello::wgpu::BufferUsages;
+use std::sync::Arc;
+
+use vello::wgpu::{BufferSlice, BufferUsages, RenderPass, RenderPipeline};
 
 use crate::backend::{DynamicBuffer, LumaBackend, LumaVertex, Material};
 
@@ -8,6 +10,23 @@ pub struct MeshGeometry {
 pub struct Mesh {
     geometry: MeshGeometry,
     material: Box<dyn Material>,
+}
+
+impl Mesh {
+    pub fn pipeline(&self) -> Arc<RenderPipeline> {
+        self.material.pipeline()
+    }
+    pub fn vertex_count(&self) -> usize {
+        self.geometry.innerbuffer.len()
+    }
+    pub fn vertex_slice(&self) -> BufferSlice {
+        self.geometry.innerbuffer.inner.slice(..)
+    }
+}
+
+pub trait LumaRenderable {
+    fn mesh(&self) -> &Mesh;
+    fn render(&self, pass: &mut RenderPass);
 }
 
 impl MeshGeometry {

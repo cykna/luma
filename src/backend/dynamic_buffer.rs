@@ -27,6 +27,11 @@ impl DynamicBuffer {
     pub fn capacity(&self) -> usize {
         self.inner.size() as usize
     }
+
+    ///Retrieves how many vertices there are on this dynamic buffer
+    pub fn len(&self) -> usize {
+        self.len
+    }
 }
 impl LumaBackend {
     pub fn create_dyn_buffer<T: Pod>(
@@ -34,17 +39,17 @@ impl LumaBackend {
         data: &[T],
         permissions: BufferUsages,
     ) -> DynamicBuffer {
-        let data = bytemuck::cast_slice(&data);
+        let byte_data = bytemuck::cast_slice(&data);
         DynamicBuffer {
             inner: self.device.create_buffer_init(&BufferInitDescriptor {
                 label: Some("dynamic buffer creation"),
-                contents: data,
+                contents: byte_data,
                 usage: permissions,
             }),
             len: data.len(),
         }
     }
-    ///Inserts the provided `data` on the final of the provided `buffer` and returns its new capacity, if resized
+    ///Inserts the provided `data` on the final of the provided `buffer` and returns its new capacity in bytes, if resized
     pub fn push_on_buffer<T: NoUninit + AnyBitPattern>(
         &self,
         buffer: &mut DynamicBuffer,
@@ -63,9 +68,11 @@ impl LumaBackend {
             buffer.inner = self
                 .create_dyn_buffer(&old_data, buffer.inner.usage())
                 .inner;
-            Some(old_data.len())
+            buffer.len += 1;
+            Some(old_data.capacity())
         } else {
             self.queue.write_buffer(&buffer.inner, offset as u64, data);
+            buffer.len += 1;
             None
         }
     }

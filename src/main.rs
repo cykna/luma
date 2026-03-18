@@ -51,7 +51,7 @@ impl LumaHandler for BasicHandler {
 
     fn rerender(&mut self, ui: &LumaUI, renderer: &mut LumaBackend) {
         renderer.render_ui(ui).unwrap();
-        renderer.render(true).unwrap();
+        renderer.render(&self.meshes, true).unwrap();
     }
 
     fn on_event(
@@ -66,11 +66,13 @@ impl LumaHandler for BasicHandler {
                 winit::event::WindowEvent::Resized(size) => {
                     renderer.resize(size.width, size.height)
                 }
-                _ => {}
+                _ => println!("{}", Triangle::WGSL),
             },
 
             LumaEvent::Created => {
+                println!("{}", Triangle::WGSL);
                 self.meshes.push(TriangleMesh::new(renderer));
+
                 tracing::info!("Initialized Luma");
             }
             _ => {}

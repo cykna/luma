@@ -1,6 +1,6 @@
 use crate::{
     backend::{BasicMaterial, LumaBackend, LumaShader, LumaVertex},
-    mesh::{Mesh, MeshGeometry},
+    mesh::{LumaRenderable, Mesh, MeshGeometry},
 };
 use luma_macros::shader;
 shader! {
@@ -12,25 +12,39 @@ shader! {
 
         struct VertexResult {
            #[builtin(position)]
-           position: Vec4<f32>
+           position: Vec4<f32>,
+           #[location(0)]
+           color: Vec4<f32>
         }
 
        #[vertex]
        fn vertex_main(vertex: Vertex) -> VertexResult {
            VertexResult {
-               position: Vec4(vertex.position.x, vertex.position.y, 0.0, 1.0)
+               position: Vec4(vertex.position.x, vertex.position.y, 0.0, 1.0),
+               color: Vec4(vertex.color, 1.0)
            }
        }
 
        #[fragment]
        fn fragment_main(vertex: VertexResult) -> Vec4<f32> {
-           Vec4(1.0, 1.0, 0.0, 1.0)
+           vertex.color
        }
     }
 }
 
 pub struct TriangleMesh {
     mesh: Mesh,
+}
+
+impl LumaRenderable for TriangleMesh {
+    fn mesh(&self) -> &Mesh {
+        &self.mesh
+    }
+    fn render(&self, pass: &mut vello::wgpu::RenderPass) {
+        pass.set_pipeline(&self.mesh.pipeline());
+        pass.set_vertex_buffer(0, self.mesh.vertex_slice());
+        pass.draw(0..self.mesh.vertex_count() as u32, 0..1);
+    }
 }
 
 impl TriangleMesh {

@@ -26,6 +26,7 @@ use vello::{RenderParams, Renderer, RendererOptions};
 use winit::window::Window;
 
 use crate::Result;
+use crate::mesh::{LumaRenderable, Mesh};
 use crate::ui::LumaUI;
 
 pub struct LumaRenderingContext {
@@ -205,7 +206,7 @@ impl LumaBackend {
         Ok(())
     }
 
-    pub fn render(&mut self, merge_with_ui: bool) -> Result<()> {
+    pub fn render<R: LumaRenderable>(&mut self, meshes: &[R], merge_with_ui: bool) -> Result<()> {
         let frame = self.surface.get_current_texture()?;
 
         let mut encoder = self
@@ -219,7 +220,7 @@ impl LumaBackend {
                 label: Some("frame texture"),
                 ..Default::default()
             });
-            let _render_pass = encoder.begin_render_pass(&RenderPassDescriptor {
+            let mut render_pass = encoder.begin_render_pass(&RenderPassDescriptor {
                 label: Some("render pass"),
                 timestamp_writes: None,
                 depth_stencil_attachment: None,
@@ -239,6 +240,9 @@ impl LumaBackend {
                     },
                 })],
             });
+            for mesh in meshes {
+                mesh.render(&mut render_pass);
+            }
         };
         if merge_with_ui {
             //todo
