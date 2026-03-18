@@ -1,3 +1,14 @@
+mod dynamic_buffer;
+mod helpers;
+mod material;
+mod shader;
+
+pub use dynamic_buffer::*;
+pub use material::*;
+pub use shader::*;
+
+use std::collections::HashMap;
+use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
 
 use vello::peniko::color::AlphaColor;
@@ -7,7 +18,8 @@ use vello::wgpu::wgt::{
 use vello::wgpu::{
     self, Adapter, BackendOptions, Backends, ExperimentalFeatures, Extent3d, Features, Instance,
     InstanceFlags, Limits, MemoryBudgetThresholds, Operations, Queue, RenderPassColorAttachment,
-    RenderPassDescriptor, RequestAdapterOptions, SurfaceConfiguration, Texture, Trace,
+    RenderPassDescriptor, RenderPipeline, RequestAdapterOptions, ShaderModule,
+    SurfaceConfiguration, Texture, Trace,
 };
 use vello::wgpu::{Device, Surface};
 use vello::{RenderParams, Renderer, RendererOptions};
@@ -16,15 +28,33 @@ use winit::window::Window;
 use crate::Result;
 use crate::ui::LumaUI;
 
-pub struct LumaBackend {
-    ui_texture: Texture,
-    ui_renderer: Renderer,
+pub struct LumaRenderingContext {
     surface: Surface<'static>,
     instance: Instance,
     adapter: Adapter,
     device: Device,
     queue: Queue,
     config: SurfaceConfiguration,
+}
+
+pub struct LumaBackend {
+    context: LumaRenderingContext,
+    ui_renderer: Renderer,
+    ui_texture: Texture,
+    shaders: HashMap<&'static str, ShaderModule>,
+    pipelines: HashMap<&'static str, Arc<RenderPipeline>>,
+}
+
+impl Deref for LumaBackend {
+    type Target = LumaRenderingContext;
+    fn deref(&self) -> &Self::Target {
+        &self.context
+    }
+}
+impl DerefMut for LumaBackend {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.context
+    }
 }
 
 impl std::fmt::Debug for LumaBackend {
@@ -96,12 +126,16 @@ impl LumaBackend {
                 view_formats: &config.view_formats,
             }),
             ui_renderer: Renderer::new(&device, RendererOptions::default()).unwrap(),
-            instance,
-            adapter,
-            device,
-            queue,
-            surface,
-            config,
+            context: LumaRenderingContext {
+                instance,
+                adapter,
+                device,
+                queue,
+                surface,
+                config,
+            },
+            shaders: HashMap::new(),
+            pipelines: HashMap::new(),
         })
     }
 
@@ -152,8 +186,8 @@ impl LumaBackend {
         });
 
         let result = self.ui_renderer.render_to_texture(
-            &self.device,
-            &self.queue,
+            &self.context.device,
+            &self.context.queue,
             ui.scene(),
             &texture,
             &RenderParams {
@@ -205,7 +239,9 @@ impl LumaBackend {
                 })],
             });
         };
-
+        if merge_with_ui {
+            //todo
+        }
         self.queue.submit([encoder.finish()]);
         frame.present();
 

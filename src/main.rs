@@ -3,11 +3,13 @@ use crate::{
     space::{LumaEvent, LumaHandler, LumaSpace, LumaWindowConfigs},
     ui::LumaUI,
 };
+
 pub use vello::wgpu;
 use winit::window::Window;
-
 mod backend;
+mod mesh;
 mod space;
+mod triangle;
 mod ui;
 
 #[cfg(target_arch = "wasm32")]
